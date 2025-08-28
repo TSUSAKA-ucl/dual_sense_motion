@@ -1,0 +1,55 @@
+from launch.substitutions import LaunchConfiguration
+
+def launch_setup(context, *args, **kwargs):
+    log_level = LaunchConfiguration('log_level', default='INFO').perform(context)
+    pose_topic = LaunchConfiguration('pose_topic', default='pose').perform(context)
+
+    motion_node = Node(
+	package='dual_sense_motion',
+	executable='dual_sense_motion',
+	name='dual_sense_motion',
+	output='screen',
+	parameters=[{'log_level': log_level}],
+    )
+
+    joy_node = Node(
+    	package='joy',
+	executable='joy_node',
+        name='joy_node',
+        output='screen',
+    )
+
+    imu_joy_sub_node = Node(
+        package='dual_sense_motion',
+        executable='imu_joy_subscriber',
+        name='imu_joy_subscriber',
+        output='screen',
+        parameters=[{'log_level': log_level}],
+        remappings=[('pose', pose_topic)],
+    )
+    return [motion_node, joy_node, imu_joy_sub_node]
+
+from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument
+from launch_ros.actions import Node
+from launch_ros.substitutions import FindPackageShare
+from launch.actions import OpaqueFunction
+def generate_launch_description():
+    declared_arguments = []
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            'log_level',
+            default_value='INFO',
+            description='Logging level',
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            'pose_topic',
+            default_value='pose',
+            description='Topic for publishing pose data',
+        )
+    )
+
+    return LaunchDescription(declared_arguments + [OpaqueFunction(function=launch_setup)])
+    

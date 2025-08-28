@@ -1,3 +1,4 @@
+#include <iostream>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <linux/input.h>
@@ -120,8 +121,11 @@ int main(int argc, char *argv[]) {
   const char* dev_name = dual_sense_motion_dev;
 
   rclcpp::init(argc, argv);
-  if (argc >= 2) {
-      dev_name = argv[1];
+  std::vector<std::string> args =
+    rclcpp::remove_ros_arguments(argc, argv);
+
+  if (args.size() >= 2) {
+      dev_name = args[1].c_str();
   }
   auto node = std::make_shared<ImuNode>(dev_name);
   rclcpp::spin(node);

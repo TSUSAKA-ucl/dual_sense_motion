@@ -2,20 +2,43 @@ import rclpy
 from rclpy.node import Node
 
 from sensor_msgs.msg import Imu
-
+from std_msgs.msg import String
 
 class MinimalSubscriber(Node):
 
     def __init__(self):
         super().__init__('minimal_imu_subscriber')
+
+        self.publisher_ = self.create_publisher(String, 'topic', 10)
+        
+        time_const = 3
+        time_delta = 0.005
+        gain_k = 1 / time_const
+        self.tustin_a1 = (2 * time_const - time_delta) / (2 * time_const + time_delta)
+        self.tustin_b0 = gain_k * (2 * time_delta) / (2 * time_const + time_delta)
+        self.tustin_b1 = self.tustin_b0
+        timer_period = time_delta  # seconds
+        self.timer = self.create_timer(timer_period, self.timer_callback)
         self.subscription = self.create_subscription(
             Imu,
             'imu',
             self.listener_callback,
             10)
         self.subscription  # prevent unused variable warning
+        self.i = 0
+
+    def timer_callback(self):
+        # acc_x 
+        msg = String()
+        msg.data = 'Hello World: %d' % self.i
+        self.publisher_.publish(msg)
+        self.get_logger().info('Publishing: "%s"' % msg.data)
+        self.i += 1
 
     def listener_callback(self, msg):
+        self.acc_x = msg.linear_acceleration.x
+        self.acc_y = msg.linear_acceleration.y
+        self.acc_z = msg.linear_acceleration.z
         # self.get_logger().info('I heard IMU data: linear_acceleration=(%.2f, %.2f, %.2f), angular_velocity=(%.2f, %.2f, %.2f)'
         #                        % (msg.linear_acceleration.x
         #                           , msg.linear_acceleration.y

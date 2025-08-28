@@ -13,6 +13,20 @@ find_package(rclcpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 
+add_executable(test_args src/test_args.cpp)
+target_include_directories(test_args PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
+)
+target_compile_features(test_args PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
+ament_target_dependencies(
+  test_args
+  "rclcpp"
+)
+install(TARGETS test_args
+  DESTINATION lib/${PROJECT_NAME})
+
+
 add_executable(dual_sense_motion src/dual_sense_motion.cpp)
 target_include_directories(dual_sense_motion PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -29,20 +43,24 @@ ament_target_dependencies(
 install(TARGETS dual_sense_motion
   DESTINATION lib/${PROJECT_NAME})
 
-add_executable(simple_sub_imu src/simple_sub_imu.cpp)
-target_include_directories(simple_sub_imu PUBLIC
+add_executable(imu_joy_subscriber src/imu_joy_subscriber.cpp)
+target_include_directories(imu_joy_subscriber PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
   ${EIGEN3_INCLUDE_DIR}
   )
-target_compile_features(simple_sub_imu PUBLIC c_std_99 cxx_std_17)
+target_compile_features(imu_joy_subscriber PUBLIC c_std_99 cxx_std_17)
 ament_target_dependencies(
-  simple_sub_imu
+  imu_joy_subscriber
   "rclcpp"
   "sensor_msgs"
 )
-install(TARGETS simple_sub_imu
+install(TARGETS imu_joy_subscriber
   DESTINATION lib/${PROJECT_NAME})
+
+install(DIRECTORY launch
+    DESTINATION share/${PROJECT_NAME}
+)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
