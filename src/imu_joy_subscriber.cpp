@@ -12,6 +12,7 @@ public:
   ImuJoySubscriber()
   : Node("imu_joy_subscriber")
   {
+    v_max_ = declare_parameter("v_max", 1.0);
     p_ = Eigen::Vector3d::Zero();
     v_ = Eigen::Vector3d::Zero();
     pose_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("pose", 10);
@@ -37,9 +38,9 @@ public:
 	Eigen::Isometry3d iso = Eigen::Isometry3d::Identity();
 	iso.linear() = q_.toRotationMatrix();
 	iso.translation() = p_;
-	// const double sqrt2h = 1.0/sqrt(2);
+	const double sqrt2h = 1.0/sqrt(2);
 	// const Eigen::Quaterniond rot_x(sqrt2h, sqrt2h, 0.0, 0.0);
-	const Eigen::Quaterniond rot(0.0, 1.0, 0.0, 0.0);
+	const Eigen::Quaterniond rot(sqrt2h, sqrt2h, 0.0, 0.0);
 	const auto iso_flipped = rot * iso;
 	const auto q_flipped = Eigen::Quaterniond(iso_flipped.rotation());
 	const auto p_flipped = iso_flipped.translation();
@@ -62,10 +63,11 @@ public:
 	const double pan = (M_PI/2.0)*(1.0 - msg->axes[4])*0.5;
 	double pan_sin, pan_cos;
 	sincos(pan, &pan_sin, &pan_cos);
-	const Eigen::Vector3d v(msg->axes[0],
+	const Eigen::Vector3d v(-msg->axes[0],
 				pan_sin*msg->axes[1],
 				-pan_cos*msg->axes[1]);
 	v_ = v_max_ * v;
+	v_max_ = get_parameter("v_max").as_double();
       };
     joy_sub_ =
       this->create_subscription<sensor_msgs::msg::Joy>("joy", 10, joy_callback);
@@ -79,7 +81,7 @@ private:
   Eigen::Quaterniond q_;
   Eigen::Vector3d p_;
   Eigen::Vector3d v_;
-  const double v_max_ = 1.0;
+  double v_max_ = 1.0;
 };
 
 int main(int argc, char * argv[])

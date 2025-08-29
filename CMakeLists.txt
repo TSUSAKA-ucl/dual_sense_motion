@@ -12,6 +12,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
 
 add_executable(test_args src/test_args.cpp)
 target_include_directories(test_args PUBLIC
@@ -28,6 +29,7 @@ install(TARGETS test_args
 
 
 add_executable(dual_sense_motion src/dual_sense_motion.cpp)
+ament_target_dependencies(dual_sense_motion std_srvs)
 target_include_directories(dual_sense_motion PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
@@ -58,9 +60,28 @@ ament_target_dependencies(
 install(TARGETS imu_joy_subscriber
   DESTINATION lib/${PROJECT_NAME})
 
-install(DIRECTORY launch
-    DESTINATION share/${PROJECT_NAME}
+
+set(LAUNCH_FILES launch/dual_sense_pose.launch)
+set(RVIZ_FILES rviz/dual_sense_motion.rviz)
+install(FILES ${LAUNCH_FILES}
+  DESTINATION share/${PROJECT_NAME}/launch
 )
+# rvizファイルはrvizが保存した時にためにsymlinkにしておく
+set(RVIZ_INSTALL_DIR share/${PROJECT_NAME}/rviz)
+install(DIRECTORY DESTINATION ${RVIZ_INSTALL_DIR}) # 空のdirectory生成
+foreach(src ${RVIZ_FILES})
+  file(RELATIVE_PATH rel_src	# 相対パスを計算する
+    "${CMAKE_INSTALL_PREFIX}/${INSTALL_DIR}/${RVIZ_INSTALL_DIR}"   # 基準:
+    "${CMAKE_SOURCE_DIR}/${src}"               # 元のファイル（絶対パス）
+  )
+  get_filename_component(fname ${src} NAME)
+  install(CODE "
+    execute_process(COMMAND \${CMAKE_COMMAND} -E create_symlink
+      \"${rel_src}\"
+      \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${RVIZ_INSTALL_DIR}/${fname}\")
+  ")
+endforeach()
+
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
