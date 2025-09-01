@@ -5,6 +5,7 @@
 #include "sensor_msgs/msg/imu.hpp"
 #include "sensor_msgs/msg/joy.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
+#include "std_srvs/srv/empty.hpp"
 #include <Eigen/Geometry>
 
 #include "tf2_ros/transform_broadcaster.h"
@@ -47,6 +48,23 @@ public:
     pose_pub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>
       (marker_name_, 10);
 
+    // API(py): https://docs.ros2.org/foxy/api/rclpy/api/services.html
+    // API: https://docs.ros.org/en/ros2_packages/jazzy/api/rclcpp/generated/index.html
+    auto reinit_acc_offset_client =
+      this->create_client<std_srvs::srv::Empty>("reinitialize_acc_offset");
+    auto reinit_orientation_client =
+      this->create_client<std_srvs::srv::Empty>("reinitialize_orientation");
+    while (!reinit_acc_offset_client->wait_for_service(std::chrono::seconds(3)) ||
+	   !reinit_orientation_client->wait_for_service(std::chrono::seconds(3))) {
+      if (!rclcpp::ok()) {
+	RCLCPP_ERROR(this->get_logger(), "Interrupted while waiting for the services. Exiting.");
+	return;
+      }
+      RCLCPP_INFO(this->get_logger(), "service not available, waiting again...");
+    }
+    auto empty_request = std::make_shared<std_srvs::srv::Empty::Request>();
+      
+    // IMU
     auto imu_callback =
       [this](sensor_msgs::msg::Imu::UniquePtr msg) -> void {
 	double now = this->get_clock()->now().seconds();
@@ -99,8 +117,12 @@ public:
       };
     imu_sub_ =
       this->create_subscription<sensor_msgs::msg::Imu>("imu", 10, imu_callback);
+
+    // joystick
     auto joy_callback =
-      [this](sensor_msgs::msg::Joy::UniquePtr msg) -> void {
+      [this,
+       reinit_acc_offset_client, reinit_orientation_client, empty_request
+       ](sensor_msgs::msg::Joy::UniquePtr msg) -> void {
 	const double pan = (M_PI/2.0)*(1.0 - msg->axes[4])*0.5;
 	double pan_sin, pan_cos;
 	sincos(pan, &pan_sin, &pan_cos);
@@ -109,6 +131,36 @@ public:
 				-pan_cos*msg->axes[1]);
 	v_ = v_max_ * v;
 	v_max_ = get_parameter("v_max").as_double();
+	// API: https://docs.ros.org/en/ros2_packages/jazzy/api/rclcpp/generated/classrclcpp_1_1Client.html
+	if (msg->buttons[4] == 1 && msg->buttons[0] == 1) { // X ボタンでリセット
+	  if (!promise_a_.has_value())
+	      // 不要 !promise_a_.value().future.valid()) // 既に呼び出し中でなければ
+	    promise_a_.emplace(reinit_acc_offset_client->async_send_request(empty_request));
+	}
+	if (msg->buttons[4] == 1 && msg->buttons[1] == 1) { // ○ ボタンでリセット
+	  if (!promise_o_.has_value())
+	    promise_o_.emplace(reinit_orientation_client->async_send_request(empty_request));
+	}
+	if (promise_a_.has_value()) {
+	  auto& promise_a = this->promise_a_.value();
+	  if (promise_a.future.valid() && 
+	      promise_a.future.wait_for(std::chrono::seconds(0)) ==
+	      std::future_status::ready) {
+	    RCLCPP_INFO(this->get_logger(), "reinitialize_acc_offset service call succeeded");
+	    promise_a.get();
+	    promise_a_.reset();
+	  }
+	}
+	if (promise_o_.has_value()) {
+	  auto& promise_o = this->promise_o_.value();
+	  if (promise_o.future.valid() &&
+	      promise_o.future.wait_for(std::chrono::seconds(0)) ==
+	      std::future_status::ready) {
+	    RCLCPP_INFO(this->get_logger(), "reinitialize_orientation service call succeeded");
+	    promise_o.get();
+	    promise_o_.reset();
+	  }
+	}
       };
     joy_sub_ =
       this->create_subscription<sensor_msgs::msg::Joy>("joy", 10, joy_callback);
@@ -128,6 +180,10 @@ private:
   double v_max_ = 1.0;
   Eigen::Quaterniond world_T_three_;
   Eigen::Quaterniond q_init_;
+  rclcpp::Client<std_srvs::srv::Empty>::SharedPtr reinit_acc_offset_client_;
+  rclcpp::Client<std_srvs::srv::Empty>::SharedPtr reinit_orientation_client_;
+  std::optional<rclcpp::Client<std_srvs::srv::Empty>::FutureAndRequestId> promise_a_;
+  std::optional<rclcpp::Client<std_srvs::srv::Empty>::FutureAndRequestId> promise_o_;
 };
 
 int main(int argc, char * argv[])

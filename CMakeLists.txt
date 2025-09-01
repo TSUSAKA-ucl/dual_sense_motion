@@ -58,6 +58,7 @@ ament_target_dependencies(
   "rclcpp"
   "sensor_msgs"
   "tf2_ros"
+  "std_srvs"
 )
 install(TARGETS imu_joy_subscriber
   DESTINATION lib/${PROJECT_NAME})
