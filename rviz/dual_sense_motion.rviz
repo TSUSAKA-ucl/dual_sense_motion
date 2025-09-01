@@ -7,6 +7,7 @@ Panels:
         - /Global Options1
         - /Status1
         - /Pose1
+        - /Axes1
       Splitter Ratio: 0.5
     Tree Height: 1293
   - Class: rviz_common/Selection
@@ -68,6 +69,13 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /pose
       Value: true
+    - Class: rviz_default_plugins/Axes
+      Enabled: true
+      Length: 1
+      Name: Axes
+      Radius: 0.10000000149011612
+      Reference Frame: world
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -114,25 +122,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 10.415777206420898
+      Distance: 7.425375938415527
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -0.6203723549842834
-        Y: 0.5737998485565186
-        Z: -0.9144877791404724
+        X: 0.8118336796760559
+        Y: 0.3257799446582794
+        Z: 0.9726459383964539
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.7202022671699524
+      Pitch: 0.4347972869873047
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 4.605413436889648
+      Yaw: 4.1204094886779785
     Saved: ~
 Window Geometry:
   Displays:
@@ -150,5 +158,5 @@ Window Geometry:
   Views:
     collapsed: false
   Width: 3099
-  X: 4260
-  Y: 333
+  X: 4702
+  Y: 696

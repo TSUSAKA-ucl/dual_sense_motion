@@ -13,6 +13,7 @@ find_package(rclcpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
+find_package(tf2_ros REQUIRED)
 
 add_executable(test_args src/test_args.cpp)
 target_include_directories(test_args PUBLIC
@@ -56,12 +57,17 @@ ament_target_dependencies(
   imu_joy_subscriber
   "rclcpp"
   "sensor_msgs"
+  "tf2_ros"
 )
 install(TARGETS imu_joy_subscriber
   DESTINATION lib/${PROJECT_NAME})
 
 
-set(LAUNCH_FILES launch/dual_sense_pose.launch)
+set(LAUNCH_FILES
+  launch/dual_sense_pose.launch
+  launch/dual_sense_for_moveit.launch
+  launch/dual_sense_default.launch
+)
 set(RVIZ_FILES rviz/dual_sense_motion.rviz)
 install(FILES ${LAUNCH_FILES}
   DESTINATION share/${PROJECT_NAME}/launch
