@@ -26,8 +26,6 @@ def launch_setup(context, *args, **kwargs):
         output='screen',
         parameters=[{'log_level': log_level},
                     {'use_threejs_coords': False},
-                    {'scale': 1.0},
-                    {'a_max': 0.3},
                     {'v_max': 0.3},
                     {'base_name': 'base_link'},
                     {'marker_name': 'interactive_marker'},

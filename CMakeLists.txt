@@ -64,24 +64,26 @@ install(TARGETS imu_joy_subscriber
   DESTINATION lib/${PROJECT_NAME})
 
 
-set(LAUNCH_FILES
-  launch/dual_sense_pose.launch
-  launch/dual_sense_for_moveit.launch
-  launch/dual_sense_default.launch
-)
-set(RVIZ_FILES rviz/dual_sense_motion.rviz)
+file(GLOB LAUNCH_FILES launch/*.launch)
+file(GLOB RVIZ_FILES rviz/*.rviz)
 install(FILES ${LAUNCH_FILES}
   DESTINATION share/${PROJECT_NAME}/launch
 )
-# rvizファイルはrvizが保存した時にためにsymlinkにしておく
+# rvizファイルはrvizで保存した時のためにsymlinkにしておく
 set(RVIZ_INSTALL_DIR share/${PROJECT_NAME}/rviz)
-install(DIRECTORY DESTINATION ${RVIZ_INSTALL_DIR}) # 空のdirectory生成
+install(DIRECTORY DESTINATION ${RVIZ_INSTALL_DIR}) # 無ければrviz directory生成
 foreach(src ${RVIZ_FILES})
   file(RELATIVE_PATH rel_src	# 相対パスを計算する
     "${CMAKE_INSTALL_PREFIX}/${INSTALL_DIR}/${RVIZ_INSTALL_DIR}"   # 基準:
-    "${CMAKE_SOURCE_DIR}/${src}"               # 元のファイル（絶対パス）
+    # "${CMAKE_SOURCE_DIR}/${src}"               # 元のファイル（絶対パス）
+    "${src}"
   )
   get_filename_component(fname ${src} NAME)
+  # install(CODE "
+  #   execute_process(COMMAND \${CMAKE_COMMAND} -E echo create_symlink
+  #     \"${rel_src}\"
+  #     \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${RVIZ_INSTALL_DIR}/${fname}\")
+  # ")
   install(CODE "
     execute_process(COMMAND \${CMAKE_COMMAND} -E create_symlink
       \"${rel_src}\"

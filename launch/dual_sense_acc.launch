@@ -28,7 +28,8 @@ def launch_setup(context, *args, **kwargs):
         parameters=[{'log_level': log_level},
                     # declare_parameter<bool>("use_threejs_coords", true)) {
                     {'use_threejs_coords': False},
-                    {'v_max': 1.7},
+		    {'use_acc': True},
+                    {'v_max': 1.0},
                     {'base_name': 'world'},
                     {'marker_name': pose_topic},
                     ],

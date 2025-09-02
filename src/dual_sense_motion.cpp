@@ -10,6 +10,8 @@
 
 using namespace std::chrono_literals;
 
+const static unsigned ACC_INIT_SAMPLES = 500;
+
 class ImuNode : public rclcpp::Node {
 public:
   ImuNode(const std::string& device) 
@@ -67,23 +69,31 @@ private:
       n = read(fd_, &ev, sizeof(ev));
     }
     if (fix_offset_) {
-      if (acc_init_count_ < 100) {
+      if (acc_init_count_ < ACC_INIT_SAMPLES) {
 	acc_init_count_++;
 	acc_init_sum_ += Eigen::Vector3d(ax_, ay_, az_);
-      } else if (acc_init_count_ == 100) {
-	acc_init_count_++;
-	acc_offset_ = acc_init_sum_ / 100.0;
+	// RCLCPP_INFO(this->get_logger(), "acc: %f, %f, %f",
+	// 	    ax_, ay_, az_);
+      } else if (acc_init_count_ == ACC_INIT_SAMPLES) {
+	acc_offset_ = acc_init_sum_ / acc_init_count_;
+	RCLCPP_INFO(this->get_logger(), "acc_init_count: %d", acc_init_count_);
 	RCLCPP_INFO(this->get_logger(), "acc offset: %f, %f, %f",
 		    acc_offset_.x(), acc_offset_.y(), acc_offset_.z());
+	acc_init_count_++;  // 1回だけ実行するように
       }
     }
     // EKF predict/update
     update_filter();
 
-    const Eigen::Vector3d acc(ax_, ay_, az_);
+    Eigen::Vector3d acc(ax_, ay_, az_);
+    if (fix_offset_ && acc_init_count_ <= ACC_INIT_SAMPLES) {
+      // 補正値がまだ確定していない場合は、とりあえず静止していると仮定
+      acc = Eigen::Vector3d(0.0, 0.0, 0.0);
+    }
     Eigen::Vector3d acc_world = Eigen::Quaterniond(x_(0), x_(1), x_(2), x_(3)) * acc;
-    if (fix_offset_)
+    if (fix_offset_ && acc_init_count_ > ACC_INIT_SAMPLES) {
       acc_world -= acc_offset_;
+    }
     // publish
     auto msg = sensor_msgs::msg::Imu();
     msg.header.stamp = this->now();
@@ -93,9 +103,9 @@ private:
       msg.linear_acceleration.y = acc_world.y();
       msg.linear_acceleration.z = acc_world.z();
     } else {
-      msg.linear_acceleration.x = ax_;
-      msg.linear_acceleration.y = ay_;
-      msg.linear_acceleration.z = az_;
+      msg.linear_acceleration.x = acc.x();
+      msg.linear_acceleration.y = acc.y();
+      msg.linear_acceleration.z = acc.z();
     }
 
     msg.angular_velocity.x = gx_;

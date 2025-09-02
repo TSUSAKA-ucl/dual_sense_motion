@@ -11,6 +11,49 @@
 #include "tf2_ros/transform_broadcaster.h"
 
 
+const double IMU_DURATION = 0.005; // 200Hz
+const double ACC_CUTOFF = 5.0; // seconds
+
+
+class IncompleteIntegrator
+{
+private:  
+  static std::pair<double, double> calc_coeff(double delta_t, double T)
+  {	// use tustin's method
+    const double eps = delta_t / (2.0 * T);
+    const double a = (1.0 - eps) / (1.0 + eps);
+    const double k = T;
+    const double b = k * delta_t / (2.0 * T + delta_t);
+    // const double a = (delta_t + 2.0 * T) / (delta_t - 2.0 * T);
+    // const double b = delta_t * T / (delta_t - 2.0 * T);
+    return {a, b};
+  }
+  const double a1_, b0_, b1_;
+  double y_prev_ = 0.0;
+  double u_prev_ = 0.0;
+  double delta_t = IMU_DURATION;
+
+public:
+  IncompleteIntegrator(double delta_t, double T)
+    : a1_(calc_coeff(delta_t, T).first)
+    , b0_(calc_coeff(delta_t, T).second)
+    , b1_(calc_coeff(delta_t, T).second)
+    , delta_t(delta_t)
+  { }
+  double update(double u)
+  {
+    // const double y = -a1_ * y_prev_ + b0_ * u + b1_ * u_prev_;
+    const double y = y_prev_ + delta_t * u;
+    y_prev_ = y;
+    u_prev_ = u;
+    return y;
+  }
+  void reset()
+  {
+    y_prev_ = 0.0;
+    u_prev_ = 0.0;
+  }
+};
 
 
 class ImuJoySubscriber : public rclcpp::Node
@@ -18,6 +61,9 @@ class ImuJoySubscriber : public rclcpp::Node
 public:
   ImuJoySubscriber()
   : Node("imu_joy_subscriber")
+  , integ_x_(IMU_DURATION, ACC_CUTOFF)
+  , integ_y_(IMU_DURATION, ACC_CUTOFF)
+  , integ_z_(IMU_DURATION, ACC_CUTOFF)
   {
     const double sqrt2h = std::sqrt(2.0) / 2.0;
     if (declare_parameter<bool>("use_threejs_coords", true)) {
@@ -25,6 +71,7 @@ public:
     } else {
       world_T_three_ = Eigen::Quaterniond(sqrt2h, sqrt2h, 0.0, 0.0);
     }
+    use_acc_ = declare_parameter("use_acc", false);
     base_name_ = declare_parameter<std::string>("base_name", "world");
     marker_name_ = declare_parameter<std::string>("marker_name", "pose");
     v_max_ = declare_parameter("v_max", 1.0);
@@ -69,6 +116,10 @@ public:
       [this](sensor_msgs::msg::Imu::UniquePtr msg) -> void {
 	double now = this->get_clock()->now().seconds();
 	double duration = prev_time_ == 0.0 ? 0.0 : now - prev_time_;
+	if (duration >= IMU_DURATION * 1.5) {
+	  RCLCPP_WARN(this->get_logger(),
+		      "IMU message interval too long: %f sec", duration);
+	}
 	prev_time_ = now;
 
 	const Eigen::Quaterniond q(msg->orientation.w,
@@ -81,7 +132,22 @@ public:
 	// const Eigen::Vector3d y_rotated = q * y_axis;
 	q_ = q;
 
-	auto v_base = q_ * v_;
+	Eigen::Vector3d v_base;
+	const double vx = integ_x_.update(msg->linear_acceleration.x);
+	const double vy = integ_y_.update(msg->linear_acceleration.y);
+	const double vz = integ_z_.update(msg->linear_acceleration.z);
+	if (use_acc_) {
+	  v_base = Eigen::Vector3d(vx, vy, vz);
+	  RCLCPP_INFO(this->get_logger(),
+		      "acc_x: %5.2f, acc_y: %5.2f, acc_z: %5.2f",//  -> v_x: %f, v_y: %f, v_z: %f",
+		      msg->linear_acceleration.x,
+		      msg->linear_acceleration.y,
+		      msg->linear_acceleration.z
+	  // 	      v_base.x(), v_base.y(), v_base.z()
+		      );
+	} else {
+	  v_base = q_ * v_;
+	}
 	p_ += v_base * duration;
 
 	Eigen::Isometry3d iso = Eigen::Isometry3d::Identity();
@@ -129,7 +195,9 @@ public:
 	const Eigen::Vector3d v(-msg->axes[0],
 				pan_sin*msg->axes[1],
 				-pan_cos*msg->axes[1]);
-	v_ = v_max_ * v;
+	if (!use_acc_) {
+	  v_ = v_max_ * v;
+	}
 	v_max_ = get_parameter("v_max").as_double();
 	// API: https://docs.ros.org/en/ros2_packages/jazzy/api/rclcpp/generated/classrclcpp_1_1Client.html
 	if (msg->buttons[4] == 1 && msg->buttons[0] == 1) { // X ボタンでリセット
@@ -149,6 +217,8 @@ public:
 	    RCLCPP_INFO(this->get_logger(), "reinitialize_acc_offset service call succeeded");
 	    promise_a.get();
 	    promise_a_.reset();
+	    integ_x_.reset(); integ_y_.reset(); integ_z_.reset();
+	    p_ = Eigen::Vector3d::Zero();
 	  }
 	}
 	if (promise_o_.has_value()) {
@@ -178,12 +248,16 @@ private:
   std::string base_name_;
   std::string marker_name_;
   double v_max_ = 1.0;
+  bool use_acc_ = false;
   Eigen::Quaterniond world_T_three_;
   Eigen::Quaterniond q_init_;
   rclcpp::Client<std_srvs::srv::Empty>::SharedPtr reinit_acc_offset_client_;
   rclcpp::Client<std_srvs::srv::Empty>::SharedPtr reinit_orientation_client_;
   std::optional<rclcpp::Client<std_srvs::srv::Empty>::FutureAndRequestId> promise_a_;
   std::optional<rclcpp::Client<std_srvs::srv::Empty>::FutureAndRequestId> promise_o_;
+  IncompleteIntegrator integ_x_;
+  IncompleteIntegrator integ_y_;
+  IncompleteIntegrator integ_z_;
 };
 
 int main(int argc, char * argv[])
