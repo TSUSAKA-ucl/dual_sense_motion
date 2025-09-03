@@ -1,5 +1,7 @@
 #include <iostream>
+#include <chrono>
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp/duration.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <std_srvs/srv/empty.hpp>
 #include <linux/input.h>
@@ -7,8 +9,6 @@
 #include <unistd.h>
 #include <cmath>
 #include <Eigen/Dense>
-
-using namespace std::chrono_literals;
 
 const static unsigned ACC_INIT_SAMPLES = 500;
 
@@ -18,6 +18,7 @@ public:
     : Node("imu_node"), fd_(-1)
   {
     acc_init_count_ = 0;
+    sampling_time_ = declare_parameter("sampling_time", 0.005); // 200Hz
     fix_offset_ = declare_parameter("fix_offset", true);
     openloop_ = declare_parameter("openloop", true);
     rotate_acc_ = declare_parameter("rotate_acc", true);
@@ -50,7 +51,10 @@ public:
     x_.setZero();
     x_.head<4>() << 1, 0, 0, 0;  // 単位四元数
 
-    timer_ = this->create_wall_timer(5ms, std::bind(&ImuNode::poll, this));
+    // ナノ秒単位のdurationを生成する
+    timer_ = this->create_wall_timer
+      ( std::chrono::duration<int, std::nano>(static_cast<int>(sampling_time_ * 1e9)),
+	std::bind(&ImuNode::poll, this));
   }
 
 private:
@@ -122,7 +126,7 @@ private:
 
   void update_filter() {
     // 超簡易版: ジャイロ積分で四元数更新し、加速度で補正
-    double dt = 0.005;  // 200Hz 仮定
+    double dt = sampling_time_;
 
     Eigen::Quaterniond q(x_(0), x_(1), x_(2), x_(3));
     Eigen::Vector3d omega(gx_, gy_, gz_);
@@ -151,29 +155,30 @@ private:
       q = q.slerp(0.02, q_acc);
     }
 
-        x_(0) = q.w();
-        x_(1) = q.x();
-        x_(2) = q.y();
-        x_(3) = q.z();
-    }
+    x_(0) = q.w();
+    x_(1) = q.x();
+    x_(2) = q.y();
+    x_(3) = q.z();
+  }
 
-    int fd_;
-    rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr pub_;
-    rclcpp::TimerBase::SharedPtr timer_;
-    rclcpp::Service<std_srvs::srv::Empty>::SharedPtr reinitialize_acc_offset_;
-    rclcpp::Service<std_srvs::srv::Empty>::SharedPtr reinitialize_orientation_;
+  int fd_;
+  rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr pub_;
+  rclcpp::TimerBase::SharedPtr timer_;
+  rclcpp::Service<std_srvs::srv::Empty>::SharedPtr reinitialize_acc_offset_;
+  rclcpp::Service<std_srvs::srv::Empty>::SharedPtr reinitialize_orientation_;
+  double sampling_time_;
   bool openloop_ = false;
   bool fix_offset_ = false;
   bool rotate_acc_ = false;
-    // raw data
-    double ax_=0, ay_=0, az_=0;
-    double gx_=0, gy_=0, gz_=0;
+  // raw data
+  double ax_=0, ay_=0, az_=0;
+  double gx_=0, gy_=0, gz_=0;
 
-    // 状態ベクトル
-    Eigen::VectorXd x_{7};
+  // 状態ベクトル
+  Eigen::VectorXd x_{7};
 
-    // scale factors (適当に補正値を入れる)
-    double scale_acc_ = 0.0;  // 例: ±4g レンジ
+  // scale factors (適当に補正値を入れる)
+  double scale_acc_ = 0.0;  // 例: ±4g レンジ
   double scale_gyro_ = 0.0; // 例: ±30 deg/s
 
   unsigned int acc_init_count_ = 0;

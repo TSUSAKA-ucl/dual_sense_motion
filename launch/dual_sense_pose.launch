@@ -1,16 +1,29 @@
 from launch.substitutions import LaunchConfiguration
 
 def launch_setup(context, *args, **kwargs):
+    sampling_time = 0.1  # seconds
     this_package = 'dual_sense_motion'
     log_level = LaunchConfiguration('log_level', default='INFO').perform(context)
     pose_topic = LaunchConfiguration('pose_topic', default='pose').perform(context)
+
+    world_to_three = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='world_to_threejs',
+        output='screen',
+        arguments=['0', '0', '0', '0.7071067811865476', '0', '0', '0.7071067811865476',
+                   'world', 'threejs'],
+        parameters=[{'log_level': log_level}],
+    )
 
     motion_node = Node(
 	package=this_package,
 	executable='dual_sense_motion',
 	name='dual_sense_motion',
 	output='screen',
-	parameters=[{'log_level': log_level}],
+	parameters=[{'log_level': log_level},
+                    {'sampling_time': sampling_time}
+                    ],
     )
 
     joy_node = Node(
@@ -26,9 +39,11 @@ def launch_setup(context, *args, **kwargs):
         name='imu_joy_subscriber',
         output='screen',
         parameters=[{'log_level': log_level},
-                    # declare_parameter<bool>("use_threejs_coords", true)) {
+                    {'imu_duration': sampling_time},
+                    {'base_name': 'threejs'},
+                    # declare_parameter<bool>("use_threejs_coords", true)) 
                     {'use_threejs_coords': False},
-                    {'v_max': 1.7},
+                    {'v_max': 0.1},
                     {'base_name': 'world'},
                     {'marker_name': pose_topic},
                     ],
@@ -44,12 +59,12 @@ def launch_setup(context, *args, **kwargs):
                    PathJoinSubstitution([
                        FindPackageShare(this_package),
                        'rviz',
-                       'dual_sense_motion.rviz'
+                       'dual_sense_pose.rviz'
                        ])
                    ]
         )
 
-    return [motion_node, joy_node, imu_joy_sub_node, rviz_node]
+    return [world_to_three, motion_node, joy_node, imu_joy_sub_node, rviz_node]
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument

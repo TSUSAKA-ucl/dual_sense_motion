@@ -34,7 +34,7 @@ private:
   double delta_t = IMU_DURATION;
 
 public:
-  IncompleteIntegrator(double delta_t, double T)
+  IncompleteIntegrator(const double delta_t, double T)
     : a1_(calc_coeff(delta_t, T).first)
     , b0_(calc_coeff(delta_t, T).second)
     , b1_(calc_coeff(delta_t, T).second)
@@ -61,10 +61,11 @@ class ImuJoySubscriber : public rclcpp::Node
 public:
   ImuJoySubscriber()
   : Node("imu_joy_subscriber")
-  , integ_x_(IMU_DURATION, ACC_CUTOFF)
-  , integ_y_(IMU_DURATION, ACC_CUTOFF)
-  , integ_z_(IMU_DURATION, ACC_CUTOFF)
   {
+    const double imu_duration = declare_parameter("imu_duration", IMU_DURATION);
+    integ_x_opt_.emplace(imu_duration, ACC_CUTOFF);
+    integ_y_opt_.emplace(imu_duration, ACC_CUTOFF);
+    integ_z_opt_.emplace(imu_duration, ACC_CUTOFF);
     const double sqrt2h = std::sqrt(2.0) / 2.0;
     if (declare_parameter<bool>("use_threejs_coords", true)) {
       world_T_three_ = Eigen::Quaterniond(1.0, 0.0, 0.0, 0.0);
@@ -113,10 +114,10 @@ public:
       
     // IMU
     auto imu_callback =
-      [this](sensor_msgs::msg::Imu::UniquePtr msg) -> void {
+      [this,imu_duration](sensor_msgs::msg::Imu::UniquePtr msg) -> void {
 	double now = this->get_clock()->now().seconds();
 	double duration = prev_time_ == 0.0 ? 0.0 : now - prev_time_;
-	if (duration >= IMU_DURATION * 1.5) {
+	if (duration >= imu_duration * 1.5) {
 	  RCLCPP_WARN(this->get_logger(),
 		      "IMU message interval too long: %f sec", duration);
 	}
@@ -133,6 +134,9 @@ public:
 	q_ = q;
 
 	Eigen::Vector3d v_base;
+	auto& integ_x_ = integ_x_opt_.value();
+	auto& integ_y_ = integ_y_opt_.value();
+	auto& integ_z_ = integ_z_opt_.value();
 	const double vx = integ_x_.update(msg->linear_acceleration.x);
 	const double vy = integ_y_.update(msg->linear_acceleration.y);
 	const double vz = integ_z_.update(msg->linear_acceleration.z);
@@ -195,10 +199,10 @@ public:
 	const Eigen::Vector3d v(-msg->axes[0],
 				pan_sin*msg->axes[1],
 				-pan_cos*msg->axes[1]);
+	v_max_ = get_parameter("v_max").as_double();
 	if (!use_acc_) {
 	  v_ = v_max_ * v;
 	}
-	v_max_ = get_parameter("v_max").as_double();
 	// API: https://docs.ros.org/en/ros2_packages/jazzy/api/rclcpp/generated/classrclcpp_1_1Client.html
 	if (msg->buttons[4] == 1 && msg->buttons[0] == 1) { // X ボタンでリセット
 	  if (!promise_a_.has_value())
@@ -217,7 +221,9 @@ public:
 	    RCLCPP_INFO(this->get_logger(), "reinitialize_acc_offset service call succeeded");
 	    promise_a.get();
 	    promise_a_.reset();
-	    integ_x_.reset(); integ_y_.reset(); integ_z_.reset();
+	    integ_x_opt_.value().reset();
+	    integ_y_opt_.value().reset();
+	    integ_z_opt_.value().reset();
 	    p_ = Eigen::Vector3d::Zero();
 	  }
 	}
@@ -255,9 +261,9 @@ private:
   rclcpp::Client<std_srvs::srv::Empty>::SharedPtr reinit_orientation_client_;
   std::optional<rclcpp::Client<std_srvs::srv::Empty>::FutureAndRequestId> promise_a_;
   std::optional<rclcpp::Client<std_srvs::srv::Empty>::FutureAndRequestId> promise_o_;
-  IncompleteIntegrator integ_x_;
-  IncompleteIntegrator integ_y_;
-  IncompleteIntegrator integ_z_;
+  std::optional<IncompleteIntegrator> integ_x_opt_;
+  std::optional<IncompleteIntegrator> integ_y_opt_;
+  std::optional<IncompleteIntegrator> integ_z_opt_;
 };
 
 int main(int argc, char * argv[])
